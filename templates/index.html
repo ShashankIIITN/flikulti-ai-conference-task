@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Flik AI Training Planner</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f4f6f9;
+      color: #1a1a2e;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    header {
+      background: #1a1a2e;
+      color: #fff;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    .logo { font-size: 1.25rem; font-weight: 700; }
+    .logo span { color: #e63946; }
+    .logo small { font-size: 0.72rem; color: #aaa; margin-left: 8px; font-weight: 400; }
+
+    /* ── Body grid: history | chat | plan ── */
+    .grid {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 220px 380px 1fr;
+      min-height: 0;
+    }
+
+    /* ── Column shared styles ── */
+    .col {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      border-right: 1px solid #dde1ea;
+      background: #fff;
+    }
+    .col-header {
+      padding: 14px 18px 10px;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #999;
+      border-bottom: 1px solid #eee;
+      flex-shrink: 0;
+    }
+
+    /* ── History sidebar ── */
+    #history-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .hist-item {
+      padding: 9px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.15s;
+      border: 1px solid transparent;
+    }
+    .hist-item:hover { background: #f4f6f9; border-color: #dde1ea; }
+    .hist-item.active { background: #fff0f1; border-color: #e63946; }
+    .hist-item .hi-topic { font-size: 0.85rem; font-weight: 600; color: #1a1a2e; }
+    .hist-item .hi-meta  { font-size: 0.72rem; color: #999; margin-top: 2px; }
+    .hist-empty { font-size: 0.8rem; color: #ccc; text-align: center; padding: 24px 12px; }
+    .hist-clear {
+      margin: 8px 10px;
+      padding: 7px;
+      background: none;
+      border: 1px solid #eee;
+      border-radius: 7px;
+      font-size: 0.75rem;
+      color: #bbb;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .hist-clear:hover { border-color: #e63946; color: #e63946; }
+
+    /* ── Chat column ── */
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .msg {
+      max-width: 94%;
+      padding: 9px 13px;
+      border-radius: 14px;
+      line-height: 1.5;
+      font-size: 0.9rem;
+    }
+    .msg.assistant { background: #f0f2f7; border-bottom-left-radius: 4px; align-self: flex-start; }
+    .msg.user      { background: #1a1a2e; color: #fff; border-bottom-right-radius: 4px; align-self: flex-end; }
+    .msg.system    {
+      background: #fff3cd; border: 1px solid #ffc107; color: #856404;
+      align-self: center; font-size: 0.8rem; border-radius: 8px;
+      text-align: center; max-width: 100%;
+    }
+    .msg.answer {
+      background: #f0f7ff;
+      border: 1px solid #c8dff8;
+      border-bottom-left-radius: 4px;
+      align-self: flex-start;
+      max-width: 97%;
+    }
+    .msg.answer .answer-badge {
+      font-size: 0.68rem; color: #4a7fc1; font-weight: 700;
+      letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 6px;
+    }
+    .msg.answer p  { margin: 4px 0; line-height: 1.55; }
+    .msg.answer ul { margin: 4px 0 4px 16px; }
+    .msg.answer li { margin-bottom: 2px; }
+    .chat-foot {
+      padding: 12px 14px;
+      border-top: 1px solid #eee;
+      display: flex;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .chat-foot input {
+      flex: 1; padding: 9px 12px; border: 1.5px solid #dde1ea;
+      border-radius: 9px; font-size: 0.9rem; outline: none;
+    }
+    .chat-foot input:focus { border-color: #1a1a2e; }
+    .chat-foot input:disabled { background: #f8f8f8; color: #aaa; }
+    .btn-primary {
+      padding: 9px 16px; background: #1a1a2e; color: #fff;
+      border: none; border-radius: 9px; font-size: 0.9rem;
+      cursor: pointer; transition: background 0.2s; white-space: nowrap;
+    }
+    .btn-primary:hover { background: #e63946; }
+    .btn-primary:disabled { background: #ccc; cursor: default; }
+
+    /* ── Plan column ── */
+    .plan-col { border-right: none; background: #fff; }
+    .plan-toolbar {
+      padding: 10px 24px;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    .plan-actions { display: flex; gap: 7px; align-items: center; }
+    .btn-sm {
+      padding: 6px 12px; border: 1.5px solid #dde1ea; border-radius: 7px;
+      background: #fff; font-size: 0.78rem; cursor: pointer; color: #555;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .btn-sm:hover:not(:disabled) { border-color: #1a1a2e; color: #1a1a2e; }
+    .btn-sm:disabled { opacity: 0.35; cursor: default; }
+    .btn-sm.danger:hover:not(:disabled) { border-color: #e63946; color: #e63946; }
+
+    .plan-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 28px 32px;
+    }
+    .placeholder {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #ccc;
+      text-align: center;
+      gap: 10px;
+    }
+    .placeholder p { font-size: 0.9rem; line-height: 1.6; }
+
+    /* Rendered markdown */
+    #plan-output h1  { font-size: 1.5rem; margin-bottom: 6px; }
+    #plan-output h2  { font-size: 1.15rem; margin: 28px 0 10px; padding-bottom: 5px; border-bottom: 2px solid #e63946; }
+    #plan-output h3  { font-size: 0.97rem; margin: 16px 0 5px; color: #333; }
+    #plan-output p   { margin-bottom: 9px; color: #333; line-height: 1.7; }
+    #plan-output ul, #plan-output ol { margin: 6px 0 10px 20px; color: #333; }
+    #plan-output li  { margin-bottom: 3px; }
+    #plan-output a   { color: #e63946; text-decoration: none; }
+    #plan-output a:hover { text-decoration: underline; }
+    #plan-output strong { color: #1a1a2e; }
+    #plan-output em { color: #555; }
+    #plan-output blockquote {
+      border-left: 3px solid #e63946; padding: 7px 14px;
+      margin: 10px 0; background: #fafafa; color: #555; border-radius: 0 6px 6px 0;
+    }
+    #plan-output hr { border: none; border-top: 1px solid #eee; margin: 20px 0; }
+    #plan-output code { background: #f0f2f7; padding: 2px 5px; border-radius: 4px; font-size: 0.86em; }
+
+    /* Status bar */
+    #status {
+      padding: 6px 24px; font-size: 0.75rem; color: #999;
+      background: #f8f9fb; border-top: 1px solid #eee; flex-shrink: 0;
+    }
+
+    /* Spinner */
+    .spinner {
+      display: inline-block; width: 13px; height: 13px;
+      border: 2px solid #ddd; border-top-color: #e63946;
+      border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Training Planner
+</header>
+
+<div class="grid">
+
+  <!-- ── Col 1: History ── -->
+  <div class="col">
+    <div class="col-header">Past Plans</div>
+    <div id="history-list"><p class="hist-empty">No plans yet</p></div>
+    <button class="hist-clear" onclick="clearHistory()">Clear history</button>
+  </div>
+
+  <!-- ── Col 2: Chat ── -->
+  <div class="col">
+    <div class="col-header">Tell me about your session</div>
+    <div class="messages" id="messages"></div>
+    <div class="chat-foot">
+      <input type="text" id="user-input" placeholder="Type your answer…" autocomplete="off" />
+      <button class="btn-primary" id="send-btn" onclick="sendMessage()">Send</button>
+      <button class="btn-primary" id="new-chat-btn" onclick="newChat()" style="display:none;background:#e63946">New Chat</button>
+    </div>
+  </div>
+
+  <!-- ── Col 3: Plan ── -->
+  <div class="col plan-col">
+    <div class="plan-toolbar">
+      <span style="font-size:0.75rem;text-transform:uppercase;letter-spacing:.08em;color:#999">Training Plan</span>
+      <div class="plan-actions">
+        <button class="btn-sm danger" id="regen-btn" onclick="regeneratePlan()" disabled>Regenerate</button>
+        <button class="btn-sm" id="copy-btn" onclick="copyPlan()" disabled>Copy</button>
+        <button class="btn-sm" id="dl-btn" onclick="downloadPlan()" disabled>Download .md</button>
+      </div>
+    </div>
+    <div class="plan-body" id="plan-body">
+      <div class="placeholder" id="placeholder">
+        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" opacity=".3">
+          <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+        </svg>
+        <p>Answer the questions on the left<br>and your training plan will appear here.</p>
+      </div>
+      <div id="plan-output" style="display:none"></div>
+    </div>
+    <div id="status">Ready</div>
+  </div>
+
+</div><!-- /.grid -->
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+// ── State ────────────────────────────────────────────────────────────────
+let history_msgs = [];   // chat messages for the /chat API
+let sessionCtx   = null; // captured training context
+let planMd       = "";   // current plan markdown
+let generating   = false;
+let activeHistId = null;
+
+// ── Boot ─────────────────────────────────────────────────────────────────
+window.addEventListener("DOMContentLoaded", () => {
+  const opening = "What do you want to work on in your next session?";
+  addMsg("assistant", opening);
+  history_msgs.push({ role: "assistant", content: opening });
+
+  document.getElementById("user-input").focus();
+  document.getElementById("user-input")
+    .addEventListener("keydown", e => { if (e.key === "Enter") sendMessage(); });
+
+  renderHistorySidebar();
+});
+
+// ── Chat helpers ─────────────────────────────────────────────────────────
+function addMsg(role, text) {
+  const wrap = document.getElementById("messages");
+  const d = document.createElement("div");
+  d.className = `msg ${role}`;
+  d.textContent = text;
+  wrap.appendChild(d);
+  wrap.scrollTop = wrap.scrollHeight;
+}
+
+function addAnswerMsg(text) {
+  const wrap = document.getElementById("messages");
+  const d = document.createElement("div");
+  d.className = "msg answer";
+  d.innerHTML = `<div class="answer-badge">📚 Flikulti Knowledge Base</div>`
+              + marked.parse(text);
+  wrap.appendChild(d);
+  wrap.scrollTop = wrap.scrollHeight;
+}
+
+function setStatus(t) { document.getElementById("status").textContent = t; }
+
+// ── Send user message ─────────────────────────────────────────────────────
+async function sendMessage() {
+  const inp = document.getElementById("user-input");
+  const text = inp.value.trim();
+  if (!text || generating) return;
+  inp.value = "";
+
+  addMsg("user", text);
+  history_msgs.push({ role: "user", content: text });
+
+  inp.disabled = true;
+  document.getElementById("send-btn").disabled = true;
+  setStatus("Thinking…");
+
+  try {
+    const res  = await fetch("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: history_msgs }),
+    });
+    const data = await res.json();
+
+    if (data.context) {
+      sessionCtx = data.context;
+      addMsg("system",
+        `Got it! Building plan for: "${sessionCtx.topic}" · ${sessionCtx.level} · ${sessionCtx.duration || "90 min"}`
+      );
+      startGenerate(sessionCtx);
+    } else if (data.is_answer) {
+      addAnswerMsg(data.reply);
+      // Add to history as assistant so the conversation stays coherent
+      history_msgs.push({ role: "assistant", content: data.reply });
+      inp.disabled = false;
+      document.getElementById("send-btn").disabled = false;
+      inp.focus();
+      setStatus("Ready");
+    } else {
+      addMsg("assistant", data.reply);
+      history_msgs.push({ role: "assistant", content: data.reply });
+      inp.disabled = false;
+      document.getElementById("send-btn").disabled = false;
+      inp.focus();
+      setStatus("Ready");
+    }
+  } catch (e) {
+    addMsg("system", "Server error — is Flask running?");
+    inp.disabled = false;
+    document.getElementById("send-btn").disabled = false;
+    setStatus("Error");
+  }
+}
+
+// ── Generate (or regenerate) plan ────────────────────────────────────────
+async function startGenerate(ctx) {
+  if (generating) return;
+  generating = true;
+  planMd = "";
+
+  document.getElementById("placeholder").style.display = "none";
+  const out = document.getElementById("plan-output");
+  out.style.display = "block";
+  out.innerHTML = `<p><span class="spinner"></span> Searching Flikulti knowledge base…</p>`;
+  setStatus("⏳ Retrieving drills, theory, and analysis…");
+
+  ["regen-btn","copy-btn","dl-btn"].forEach(id =>
+    document.getElementById(id).disabled = true
+  );
+
+  const res = await fetch("/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(ctx),
+  });
+
+  if (!res.ok) {
+    out.innerHTML = "<p>Generation failed — check server logs.</p>";
+    setStatus("Error"); generating = false; return;
+  }
+
+  out.innerHTML = "";
+
+  const reader = res.body.getReader();
+  const dec    = new TextDecoder();
+  let buf = "";
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const lines = buf.split("\n");
+    buf = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const payload = line.slice(6);
+      if (payload === "[DONE]") break;
+      try {
+        const msg = JSON.parse(payload);
+        if (msg.type === "status") {
+          setStatus(msg.text);
+        } else if (msg.type === "chunk") {
+          planMd += msg.text;
+          out.innerHTML = marked.parse(planMd);
+          document.getElementById("plan-body").scrollTop =
+            document.getElementById("plan-body").scrollHeight;
+        } else if (msg.type === "error") {
+          out.innerHTML = `<div style="color:#c00;background:#fff0f0;padding:16px 20px;border-radius:8px;border:1px solid #fcc;line-height:1.6">
+            <strong>Could not generate plan:</strong><br>${msg.text}</div>`;
+          setStatus("❌ Error");
+        }
+      } catch (_) {}
+    }
+  }
+
+  if (!planMd.trim()) {
+    // Stream ended but no plan was written — surface the last status as error
+    if (!out.innerHTML.includes("Could not generate")) {
+      out.innerHTML = `<div style="color:#c00;background:#fff0f0;padding:16px 20px;border-radius:8px;border:1px solid #fcc;line-height:1.6">
+        <strong>No plan was generated.</strong><br>
+        Check the terminal for errors, or try rephrasing your request.</div>`;
+    }
+    setStatus("❌ Failed");
+    generating = false;
+    document.getElementById("new-chat-btn").style.display = "inline-block";
+    document.getElementById("send-btn").style.display     = "none";
+    document.getElementById("user-input").style.display   = "none";
+    return;
+  }
+
+  out.innerHTML = marked.parse(planMd);
+  setStatus("✅ Plan ready");
+  generating = false;
+
+  ["regen-btn","copy-btn","dl-btn"].forEach(id =>
+    document.getElementById(id).disabled = false
+  );
+
+  // Swap Send → New Chat
+  document.getElementById("send-btn").style.display    = "none";
+  document.getElementById("user-input").style.display  = "none";
+  document.getElementById("new-chat-btn").style.display = "inline-block";
+
+  saveToHistory(ctx, planMd);
+}
+
+function newChat() {
+  // Reset chat state only — plan + history stay intact
+  history_msgs = [];
+  sessionCtx   = null;
+
+  document.getElementById("messages").innerHTML = "";
+  document.getElementById("new-chat-btn").style.display = "none";
+  document.getElementById("send-btn").style.display     = "inline-block";
+  document.getElementById("user-input").style.display   = "block";
+  document.getElementById("user-input").disabled        = false;
+  document.getElementById("send-btn").disabled          = false;
+  setStatus("Ready");
+
+  const opening = "What do you want to work on in your next session?";
+  addMsg("assistant", opening);
+  history_msgs.push({ role: "assistant", content: opening });
+  document.getElementById("user-input").value = "";
+  document.getElementById("user-input").focus();
+}
+
+function regeneratePlan() {
+  if (!sessionCtx) return;
+  startGenerate(sessionCtx);
+}
+
+// ── Toolbar ───────────────────────────────────────────────────────────────
+function copyPlan() {
+  navigator.clipboard.writeText(planMd).then(() => {
+    const b = document.getElementById("copy-btn");
+    b.textContent = "Copied!";
+    setTimeout(() => b.textContent = "Copy", 1500);
+  });
+}
+
+function downloadPlan() {
+  const slug = (sessionCtx?.topic || "plan")
+    .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const a = Object.assign(document.createElement("a"), {
+    href:     URL.createObjectURL(new Blob([planMd], { type: "text/markdown" })),
+    download: `plan-${slug}.md`,
+  });
+  a.click();
+}
+
+// ── History (localStorage) ────────────────────────────────────────────────
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem("flik_plans") || "[]"); }
+  catch (_) { return []; }
+}
+
+function saveToHistory(ctx, md) {
+  const plans = loadHistory();
+  const id    = Date.now();
+  plans.unshift({
+    id,
+    topic:     ctx.topic,
+    level:     ctx.level,
+    duration:  ctx.duration,
+    timestamp: new Date().toLocaleDateString(),
+    markdown:  md,
+    ctx,
+  });
+  // Keep last 20
+  localStorage.setItem("flik_plans", JSON.stringify(plans.slice(0, 20)));
+  activeHistId = id;
+  renderHistorySidebar();
+}
+
+function renderHistorySidebar() {
+  const plans = loadHistory();
+  const list  = document.getElementById("history-list");
+  if (!plans.length) {
+    list.innerHTML = `<p class="hist-empty">No plans yet</p>`;
+    return;
+  }
+  list.innerHTML = plans.map(p => `
+    <div class="hist-item ${p.id === activeHistId ? "active" : ""}"
+         onclick="loadHistoryItem(${p.id})">
+      <div class="hi-topic">${escHtml(p.topic)}</div>
+      <div class="hi-meta">${escHtml(p.level || "")} · ${escHtml(p.duration || "")} · ${p.timestamp}</div>
+    </div>
+  `).join("");
+}
+
+function loadHistoryItem(id) {
+  const plan = loadHistory().find(p => p.id === id);
+  if (!plan) return;
+  activeHistId = id;
+  sessionCtx   = plan.ctx;
+  planMd       = plan.markdown;
+
+  document.getElementById("placeholder").style.display = "none";
+  const out = document.getElementById("plan-output");
+  out.style.display = "block";
+  out.innerHTML = marked.parse(planMd);
+  document.getElementById("plan-body").scrollTop = 0;
+  setStatus(`Loaded: ${plan.topic} (${plan.timestamp})`);
+  ["regen-btn","copy-btn","dl-btn"].forEach(id => document.getElementById(id).disabled = false);
+  renderHistorySidebar();
+}
+
+function clearHistory() {
+  if (!confirm("Clear all saved plans?")) return;
+  localStorage.removeItem("flik_plans");
+  activeHistId = null;
+  renderHistorySidebar();
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+</script>
+</body>
+</html>
